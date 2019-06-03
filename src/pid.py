@@ -1,191 +1,186 @@
 # #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+
+# Importing time for time management
 import time
 
 
-class PID():
+class PID(object):
+    """A class used to represent a PID - Controller
+
+    ...
+
+    Attributes
+    ----------
+    None
+
+    Methods
+    -------
+    setIntegralLimits(lowerLimit, upperLimit)
+        Limits the integral windup to the limits
+
+    setOutputLimits(lowerLimit, upperLimit)
+        Limits the output to the limits
+
+    addOutputOffset(offset)
+        Adds a offset to the computed output
+
+    changeParameters(kp, ki, kd)
+        Updates the controller terms
+
+    compute(target, actual)
+        Calculates the new output based on 
+        the traditional PID formula
     """
-    A fully functional PID - controller.
-    """
 
-    def __init__(self, input_, setPoint_=0.0, kp_=1.0, ki_=0.0, kd_=0.0, controllerDirection_="DIRECT"):
+    def __init__(self, kp, ki, kd, direction):
         """
-        Constructor used to initialize necessary parameters to have a working controller.
-        @input_ : feedback from the closed loop
-        @setPoint_ : desired value
-        @kp_ : proportional term
-        @ki_ : integral term
-        @kd_ : derivative term
-        @controllerDirection_ : DIRECT or REVERSE
+        Parameters
+        ----------
+        kp : float
+            Proportional gain
+        ki : float
+            Integral gain
+        kd : float
+            Derivative gain
+        direction : int
+            -1 for reverse
+            1 for forward
         """
 
-        self.input = input_
-        self.setPoint = setPoint_
-        self.inAuto = False
-        self.sampleTime = 100  # In millis
-        self.controllerDirection = "DIRECT"
-        self.setControllerDirection(controllerDirection_)
-        self.setTunings(kp_, ki_, kd_)
-        self.lastTime = self.millis() - self.sampleTime
-        self.output = 0
-        self.outputSum = 0
-        self.lastInput = 0
-        self.outMin, self.outMax = 0, 0
+        self.direction = direction
+        self.changeParameters(kp, ki, kd)
+        self.updateTime = 100
+        self.lastUpdate = self.millis(self)
+        self.output = 0.0
+        self.pOutput = 0.0
+        self.iOutput = 0.0
+        self.dOutput = 0.0
+        self.lastActual = 0.0
+        self.lowerIntegralLimit = 0
+        self.upperIntegralLimit = 0
 
+    def setIntegralLimits(self, lowerLimit, upperLimit):
+        """Set the lower and upper limits for the intergral output
+
+        Parameters
+        ----------
+        lowerlimit : float
+            The lower limit
+        upperlimit : float
+            The upper limit
+        """
+
+        self.lowerIntegralLimit = lowerLimit
+        self.upperIntegralLimit = upperLimit
+
+    def setOutputLimits(self, lowerLimit, upperLimit):
+        """Set the lower and upper limits for the total output
+
+        Parameters
+        ----------
+        lowerlimit : float
+            The lower limit
+        upperlimit : float
+            The upper limit
+        """
+        self.lowerOuputLimit = lowerLimit
+        self.upperOutputLimit = upperLimit
+
+    def addOutputOffset(self, offset):
+        """Adds a offset to the output
+
+        Parameters
+        ----------
+        offset : float
+            Offset to be added to output
+        """
+
+        self.outputOffset = offset
+
+    @staticmethod
     def millis(self):
-        """
-        Returns the current time in milliseconds.
+        """Returns the current time in milliseconds
+
+        Returns
+        -------
+        current time in milliseconds
         """
 
         return int(round(time.time() * 1000))
 
-    def setTunings(self, kp_, ki_, kd_):
-        """
-        Set the PID - controller terms.
-        @kp_ : proportional term
-        @ki_ : integral term
-        @kd_ : derivative term
-        """
+    def changeParameters(self, kp, ki, kd):
+        """Update the controller terms
 
-        if (kp_ < 0 or ki_ < 0 or kd_ < 0):
-            return
-
-        sampleTimeInSec = self.sampleTime / 1000
-        self.kp = kp_
-        self.ki = ki_ * sampleTimeInSec
-        self.kd = kd_ * sampleTimeInSec
-
-        if(self.controllerDirection == "REVERSE"):
-            self.kp = (0 - kp_)
-            self.ki = (0 - ki_)
-            self.kd = (0 - kd_)
-
-    def compute(self):
-        """
-        Calculates the output by the given terms.
-        @return False if time since last change is less than sample time.
-                else returns True when output is updated.
+        Parameters
+        ----------
+        kp : float
+            The proportional gain
+        ki : float
+            The integral gain
+        kd : float
+            The derivative gain
         """
 
-        computed = False
-        if(not self.inAuto):
-            return False
+        if self.direction < 0:
+            self.kp = kp * -1
+            self.ki = ki * -1
+            self.kd = kd * -1
+        else:
+            self.kp = kp
+            self.ki = ki
+            self.kd = kd
 
-        now = self.millis()
-        timeChange = now - self.lastTime
-        
-        if(timeChange >= self.sampleTime):
+    def compute(self, target, actual):
+        """Calulates the output based on the PID algorithm
 
-            input_ = self.input
-            error = self.setPoint - input_
-            dInput = input_ - self.lastInput
-            self.outputSum += self.ki * error
+        Parameters
+        ----------
+        target : float
+            Desired value
+        actual : float
+            Current value
 
-            if(self.outputSum > self.outMax):
-                self.outputSum = self.outMax
-            elif(self.outputSum < self.outMin):
-                self.outputSum = self.outMin
-
-            output = self.kp * error
-            output += self.outputSum - (self.kd * dInput)
-
-            if(output > self.outMax):
-                output = self.outMax
-            elif(output < self.outMin):
-                output = self.outMin
-            self.output = output
-
-            self.lastInput = input_
-            self.lastTime = now
-
-            computed = True
-
-        return computed
-
-    def setMode(self, mode):
-        """
-        Set the PID - controller to Automatic.
-        @mode : AUTOMATIC or MANUAL
+        Returns
+        -------
+        output : float
+            The output correction
         """
 
-        newAuto = False
-        if (mode == "AUTOMATIC"):
-            newAuto = True
+        now = self.millis(self)
+        timeDifference = now - self.lastUpdate
+        if timeDifference >= self.updateTime:
+            error = target - actual
+            self.pOutput = error * self.kp
+            self.iOutput += error * self.ki
+            self.dOutput += actual - self.lastActual
 
-        if(newAuto and not self.inAuto):
-            self.initialize()
-        self.inAuto = newAuto
+            if self.iOutput < self.lowerIntegralLimit:
+                self.iOutput = self.lowerIntegralLimit
+            elif self.iOutput > self.upperIntegralLimit:
+                self.iOutput = self.upperIntegralLimit
 
-    def setSampleTime(self, newSampleTime):
-        """
-        Set the time when the PID output should update.
-        @newSampleTime : time in milliseconds
-        """
+            self.output = self.outputOffset + self.pOutput + self.iOutput + self.dOutput
 
-        if (newSampleTime > 0):
-            ratio = newSampleTime / self.sampleTime
-            self.ki *= ratio
-            self.kd /= ratio
-            self.sampleTime = newSampleTime
+            if self.output < self.lowerOuputLimit:
+                self.output = self.lowerOuputLimit
+            elif self.output > self.upperOutputLimit:
+                self.output = self.upperOutputLimit
 
-    def setOutputLimits(self, min_, max_):
-        """
-        Constrain the PID output to the given min and max.
-        @min_ : lowest value
-        @max_ : highest value
-        """
-
-        if (min_ > max_):
-            return
-        self.outMin = min_
-        self.outMax = max_
-
-        if(self.inAuto):
-            if(self.output > self.outMax):
-                self.output = self.outMax
-            elif(self.output < self.outMin):
-                self.outputSum = self.outMin
-
-            if(self.outputSum > self.outMax):
-                self.outputSum = self.outMax
-            elif(self.outputSum < self.outMin):
-                self.outputSum = self.outMin
-
-    def initialize(self):
-        """
-        Initializes the PID when moving from MANUAL to AUTOMATIC.
-        """
-
-        self.outputSum = self.output
-        self.lastInput = self.input
-        if(self.outputSum > self.outMax):
-            self.outputSum = self.outMax
-        elif(self.outputSum < self.outMin):
-            self.outputSum = self.outMin
-
-    def setControllerDirection(self, newDirection):
-        """
-        Set the PID - controllers direction.
-        @newDirection : DIRECT or REVERSE
-        """
-
-        if(self.inAuto and (newDirection != self.controllerDirection)):
-            self.kp = (0 - self.kp)
-            self.ki = (0 - self.ki)
-            self.kd = (0 - self.kd)
-
-        self.controllerDirection = newDirection
+            self.lastActual = actual
+            self.lastUpdate = now
+        else:
+            return self.output
 
 
 # Example of usage
 if __name__ == "__main__":
-    pid = PID(input_=20.0, setPoint_=50.0, kp_=1.0, ki_=0.01,
-              kd_=0.10, controllerDirection_="DIRECT")
-    pid.setSampleTime(10)
+    pid = PID(kp=2.0, ki=0.0, kd=0.0, direction=1)
+    pid.addOffset(50.0)
+    pid.updateTime = 100
     pid.setOutputLimits(0, 100)
-    pid.setMode("AUTOMATIC")
-    i = 0
-    while(i <= 10000):
-        pid.compute()
-        i += 1
+
+    while(True):
+        output = pid.compute(50, 23)
+        print(output)
